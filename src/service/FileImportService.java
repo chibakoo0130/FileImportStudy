@@ -10,7 +10,6 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
-import java.util.logging.Handler;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -101,7 +100,7 @@ public class FileImportService {
     /**
      * ファイルの内容を受け取ってチェックしたのち、チェック結果に応じて<br>
      * 中間ファイルかエラーファイルに出力する。
-     * Java8以降で書けるtry resources文を利用する。
+     * Java8以降で書けるtry resources文を利用した場合。
      *
      * @param tempFilePath 中間ファイルのパス
      * @param errFilePath エラーファイルのパス
@@ -112,10 +111,13 @@ public class FileImportService {
             FileContents fileContents) {
 
         boolean hasError = false;
-        try (BufferedWriter outputBw = Files.newBufferedWriter(tempFilePath,
+
+        try (BufferedWriter tempBw = Files.newBufferedWriter(tempFilePath,
                 StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
             BufferedWriter errorBw = Files.newBufferedWriter(errFilePath,
                 StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING)) {
+
+            // データがある5行目からデータを取得
             for (int i = 4; i < fileContents.getLines().size(); i++) {
                 String[] line = fileContents.getLines().get(i).split(COMMA, -1);
                 StringBuilder outputLine = new StringBuilder(Arrays.toString(line).substring(1, Arrays.toString(line).length() - 1));
@@ -126,11 +128,67 @@ public class FileImportService {
                 if (outputLine.toString().split(COMMA, -1).length > 3) {
                     errorBw.write(outputLine.toString() + BREAK_LINE);
                 } else {
-                    outputBw.write(outputLine.toString() + BREAK_LINE);
+                    tempBw.write(outputLine.toString() + BREAK_LINE);
                 }
             }
         } catch (IOException e) {
             e.printStackTrace();
+        }
+        return hasError;
+    }
+
+    /**
+     * ファイルの内容を受け取ってチェックしたのち、チェック結果に応じて<br>
+     * 中間ファイルかエラーファイルに出力する。<br>
+     * Java7以前の書き方の場合。
+     *
+     * @param tempFilePath 中間ファイルのパス
+     * @param errFilePath エラーファイルのパス
+     * @param fileContents ファイルの内容
+     * @return チェックエラーがあった場合true/ない場合false
+     */
+    protected static boolean outputTempOrErrLegacy(Path tempFilePath, Path errFilePath,
+            FileContents fileContents) {
+
+        boolean hasError = false;
+
+        BufferedWriter tempBw = null;
+        BufferedWriter errorBw = null;
+        try {
+            tempBw = Files.newBufferedWriter(tempFilePath,
+                    StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
+            errorBw = Files.newBufferedWriter(errFilePath,
+                    StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
+
+            // データのある5行目からデータを取得
+            for (int i = 4; i < fileContents.getLines().size(); i++) {
+                String[] line = fileContents.getLines().get(i).split(COMMA, -1);
+                StringBuilder outputLine = new StringBuilder(Arrays.toString(line).substring(1, Arrays.toString(line).length() - 1));
+
+                hasError = checkData(line, outputLine);
+
+                // エラーファイルまたは中間ファイルに書き込み
+                if (outputLine.toString().split(COMMA, -1).length > 3) {
+                    errorBw.write(outputLine.toString() + BREAK_LINE);
+                } else {
+                    tempBw.write(outputLine.toString() + BREAK_LINE);
+                }
+            }
+        } catch (IOException e) {
+            if (tempBw != null) {
+                try {
+                    tempBw.close();
+                } catch (IOException e2) {
+                    e2.printStackTrace();
+                }
+            }
+            if (errorBw != null) {
+                try {
+                    errorBw.close();
+                } catch (IOException e2) {
+                    e2.printStackTrace();
+                }
+            }
         }
         return hasError;
     }
