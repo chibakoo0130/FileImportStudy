@@ -10,6 +10,7 @@ import java.nio.file.Path;
 import java.nio.file.Paths;
 import java.nio.file.StandardOpenOption;
 import java.util.Arrays;
+import java.util.logging.Handler;
 
 import org.apache.commons.lang3.StringUtils;
 
@@ -63,39 +64,19 @@ public class FileImportService {
             System.out.println("fileCdErr");
         }
 
-        Path outputFilePath = Paths.get(RESOURCES_PATH + "中間サンプルファイル.csv");
+        Path tempFilePath = Paths.get(RESOURCES_PATH + "中間サンプルファイル.csv");
         Path errorFilePath = Paths.get(RESOURCES_PATH + "エラーサンプルファイル.csv");
 
         try {
-            createFile(outputFilePath);
+            createFile(tempFilePath);
             createFile(errorFilePath);
         } catch (IOException e) {
             e.printStackTrace();
         }
 
-        // エラーファイル削除の判断に用いるエラーの有無フラグ
-        boolean hasError = false;
-
-        try (BufferedWriter outputBw = Files.newBufferedWriter(outputFilePath,
-                    StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
-                BufferedWriter errorBw = Files.newBufferedWriter(errorFilePath,
-                    StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING)) {
-            for (int i = 4; i < fileContents.getLines().size(); i++) {
-                String[] line = fileContents.getLines().get(i).split(COMMA, -1);
-                StringBuilder outputLine = new StringBuilder(Arrays.toString(line).substring(1, Arrays.toString(line).length() - 1));
-
-                hasError = checkData(line, outputLine);
-
-                // エラーファイルまたは中間ファイルに書き込み
-                if (outputLine.toString().split(COMMA, -1).length > 3) {
-                    errorBw.write(outputLine.toString() + BREAK_LINE);
-                } else {
-                    outputBw.write(outputLine.toString() + BREAK_LINE);
-                }
-            }
-        } catch (IOException e) {
-            e.printStackTrace();
-        }
+        // エラーファイルまたは中間ファイルに出力
+        // チェックエラーがあった場合hasErrorはtrue
+        boolean hasError = outputTempOrErrFile(tempFilePath, errorFilePath, fileContents);
 
         if (!hasError) {
             errorFilePath.toFile().delete();
@@ -115,6 +96,43 @@ public class FileImportService {
         if (!filePath.toFile().exists()) {
             filePath.toFile().createNewFile();
         }
+    }
+
+    /**
+     * ファイルの内容を受け取ってチェックしたのち、チェック結果に応じて<br>
+     * 中間ファイルかエラーファイルに出力する。
+     * Java8以降で書けるtry resources文を利用する。
+     *
+     * @param tempFilePath 中間ファイルのパス
+     * @param errFilePath エラーファイルのパス
+     * @param fileContents ファイルの内容
+     * @return チェックエラーがあった場合true/ない場合false
+     */
+    protected static boolean outputTempOrErrFile(Path tempFilePath, Path errFilePath,
+            FileContents fileContents) {
+
+        boolean hasError = false;
+        try (BufferedWriter outputBw = Files.newBufferedWriter(tempFilePath,
+                StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING);
+            BufferedWriter errorBw = Files.newBufferedWriter(errFilePath,
+                StandardCharsets.UTF_8, StandardOpenOption.TRUNCATE_EXISTING)) {
+            for (int i = 4; i < fileContents.getLines().size(); i++) {
+                String[] line = fileContents.getLines().get(i).split(COMMA, -1);
+                StringBuilder outputLine = new StringBuilder(Arrays.toString(line).substring(1, Arrays.toString(line).length() - 1));
+
+                hasError = checkData(line, outputLine);
+
+                // エラーファイルまたは中間ファイルに書き込み
+                if (outputLine.toString().split(COMMA, -1).length > 3) {
+                    errorBw.write(outputLine.toString() + BREAK_LINE);
+                } else {
+                    outputBw.write(outputLine.toString() + BREAK_LINE);
+                }
+            }
+        } catch (IOException e) {
+            e.printStackTrace();
+        }
+        return hasError;
     }
 
     /**
